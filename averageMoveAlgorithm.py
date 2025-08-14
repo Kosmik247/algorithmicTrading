@@ -12,21 +12,22 @@ def calc_strategy_performance(data, short_window, long_window):
     crossover strategy.
 
     Args:
-        data (pd.DataFrame): DataFrame containing stock price data with a 'Close' column.
+        data (panda.Dataframe): DataFrame containing stock price data with a Close column.
         short_window (int): The number of days for the short moving average.
         long_window (int): The number of days for the long moving average.
 
     Returns:
-        pd.DataFrame: A copy of the original DataFrame with 'Fast_MA', 'Slow_MA',
-                      'Signal', and 'Position' columns added.
+        panda.DataFrame: A copy of the original DataFrame with Fast_MA, Slow_MA,
+                      Signal and Position columns added.
     """
-    # Create a copy to avoid the SettingWithCopyWarning
-    df = data.copy()
+    
+    df = data.copy() # Copydata to avoid modifying the original DataFrame
     
     # Calculate the moving averages using the user-defined windows
     df['Fast_MA'] = df['Close'].rolling(window=short_window).mean()
     df['Slow_MA'] = df['Close'].rolling(window=long_window).mean()
 
+   
     df['Signal'] = 0.0
     
     # Generate a raw signal of 1.0 when fast MA crosses above the slow MA
@@ -40,27 +41,27 @@ def calc_strategy_performance(data, short_window, long_window):
     
     return df
 
-def analyze_strategy_performance(data):
+def calculate_metrics(data):
     """
-    Calculates and prints the key performance metrics of the trading strategy.
+    Calculates key performance metrics of the trading strategy.
     
     Args:
-        data (pd.DataFrame): DataFrame with 'Close' and 'Position' columns.
+        data (panda.DataFrame): DataFrame with Close and Position columns.
     
     Returns:
-        pd.DataFrame: The original DataFrame with performance metric columns added.
+        dict: A dictionary of performance metrics.
     """
     # Calculate returns
     data['Daily_Return'] = data['Close'].pct_change()
-    data['Strategy_Return'] = data['Daily_Return'] * data['Position'].shift(1)
+    data['Strategy_Return'] = data['Daily_Return'] * data['Position'].shift(1) # Shift position to avoid lookahead bias
     
     # Calculate cumulative returns
     data['Cumulative_Benchmark'] = (1 + data['Daily_Return']).cumprod()
     data['Cumulative_Strategy'] = (1 + data['Strategy_Return']).cumprod()
     
-    # Calculate key metrics
+    # Total returns
     total_strategy_return = data['Cumulative_Strategy'].iloc[-1] - 1
-    total_benchmark_return = data['Cumulative_Benchmark'].iloc[-1] - 1
+    total_benchmark_return = data['Cumulative_Benchmark'].iloc[-1] - 1 # Create a benchmark return for comparison
     
     # Sharpe Ratio
     mean_daily_return = data['Strategy_Return'].mean()
@@ -77,54 +78,141 @@ def analyze_strategy_performance(data):
     data['Drawdown'] = (data['Cumulative_Max'] - data['Cumulative_Strategy']) / data['Cumulative_Max']
     max_drawdown = data['Drawdown'].max()
     
-    
-    print("--- Performance Metrics ---")
-    print(f"Total Strategy Return: {total_strategy_return:.2%}")
-    print(f"Total Buy-and-Hold Return: {total_benchmark_return:.2%}")
-    print(f"Sharpe Ratio: {annualized_sharpe:.2f}")
-    print(f"Maximum Drawdown: {max_drawdown:.2%}")
-    
-    return data
+    # Beta formula, this is a measure of volatility relative to the market, higher beta means more volatility
+    beta = data['Strategy_Return'].cov(data['Daily_Return']) / data['Daily_Return'].var()
 
-def plot_data(data, short_window, long_window):
+    # Alpha formula, this is the excess return of the strategy over the benchmark, higher alpha means better performance
+    mean_strategy_return = data['Strategy_Return'].mean()
+    mean_benchmark_return = data['Daily_Return'].mean()
+    alpha = mean_strategy_return - (beta * mean_benchmark_return)
+    annualized_alpha = alpha * 252
+
+    # Annualized Volatility
+    annualised_volatility = data['Strategy_Return'].std() * np.sqrt(252)
+
+    # Calmar ratio, which is a risk-adjusted return measure, a measure of return per unit of risk
+    annualised_return = data['Strategy_Return'].mean() * 252
+    if max_drawdown == 0: 
+        calmar_ratio = np.nan
+    else:
+        calmar_ratio = annualised_return / max_drawdown
+
+    return {"Total Strategy Return": total_strategy_return,
+            "Total Buy-and-Hold Return": total_benchmark_return,
+            "Sharpe Ratio": annualized_sharpe,
+            "Maximum Drawdown": max_drawdown,
+            "Beta": beta,
+            "Annualized Alpha": annualized_alpha,
+            "Annualized Volatility": annualised_volatility,
+            "Calmar Ratio": calmar_ratio}
+
+def optimize_strategy(data):
     """
-    Plots the stock price, moving averages, and trading signals, as well as
-    the cumulative returns of the strategy vs. a benchmark.
+    Performs a parameter sweep to find the optimal short and long window
+    based on the highest Sharpe Ratio.
     
     Args:
-        data (pd.DataFrame): The DataFrame with all calculated columns.
+        data (panda.DataFrame): The stock price data.
+        
+    Returns:
+        tuple: A tuple containing the best short and long window values.
+    """
+    best_sharpe = -np.inf
+    best_params = (0, 0)
+    
+    print("\n--- Running Parameter Optimization ---")
+    
+    # Define a range of values for the short and long windows
+    short_window_range = range(10, 61, 5)  
+    long_window_range = range(100, 251, 10)  
+
+    for short in short_window_range:
+        for long in long_window_range:
+            # Skip invalid combinations where short window is not less than long
+            if short >= long:
+                continue
+            
+            # Calculate strategy performance for this parameter set
+            temp_data = calc_strategy_performance(data, short, long)
+            
+            # Calculate metrics
+            metrics = calculate_metrics(temp_data)
+            
+            # Check if this combination has a better Sharpe Ratio
+            if metrics['Sharpe Ratio'] > best_sharpe:
+                best_sharpe = metrics['Sharpe Ratio']
+                best_params = (short, long)
+                print(f"New best found: Short={short}, Long={long}, Sharpe={best_sharpe:.2f}")
+
+    print("--- Optimization Complete ---")
+    print(f"Best parameters are Short={best_params[0]}, Long={best_params[1]}")
+    return best_params
+
+def print_metrics(metrics):
+    """
+    Prints the performance metrics in a formatted way.
+    
+    Args:
+        metrics (dict): A dictionary of performance metrics.
+    """
+    print("--- Performance Metrics ---")
+    print(f"Total Strategy Return: {metrics['Total Strategy Return']:.2%}")
+    print(f"Total Buy-and-Hold Return: {metrics['Total Buy-and-Hold Return']:.2%}")
+    print(f"Sharpe Ratio: {metrics['Sharpe Ratio']:.2f}")
+    print(f"Maximum Drawdown: {metrics['Maximum Drawdown']:.2%}")
+    print(f"Beta: {metrics['Beta']:.2f}")
+    print(f"Annualized Alpha: {metrics['Annualized Alpha']:.2f}")
+    print(f"Annualized Volatility: {metrics['Annualized Volatility']:.2f}")
+    print(f"Calmar Ratio: {metrics['Calmar Ratio']:.2f}")
+    
+def plot_data(data, short_window, long_window, metrics, ticker_symbol):
+    """
+    Plots the stock price, moving averages, and trading signals, as well as
+    the cumulative returns of the strategy vs. a benchmark and the drawdown.
+    
+    Args:
+        data (panda.DataFrame): The DataFrame with all calculated columns.
         short_window (int): The number of days for the short moving average.
         long_window (int): The number of days for the long moving average.
+        metrics (dict): A dictionary of performance metrics to display in titles.
+        ticker_symbol (str): The stock ticker symbol.
     """
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 12), sharex=True)
+    # 3 Subplots
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 18), sharex=True)
     
+    # Plot 1: Price and Signals
     ax1.plot(data['Close'], label='Close Price')
     ax1.plot(data['Fast_MA'], label=f'{short_window}-Day MA')
     ax1.plot(data['Slow_MA'], label=f'{long_window}-Day MA')
 
-    # Plot buy signals when there is a positive crossover, not relying on signals column
+    # Plot buy signals when there is a positive crossover
     buy_signals = data.loc[data['Crossover'] == 1.0]
     ax1.plot(buy_signals.index,
              buy_signals['Close'],
              '^', markersize=10, color='g', label='Buy Signal')
 
-    # Selling when negative crossover occurs
+    # Plot sell signals when there is a negative crossover
     sell_signals = data.loc[data['Crossover'] == -1.0]
     ax1.plot(sell_signals.index,
              sell_signals['Close'],
              'v', markersize=10, color='r', label='Sell Signal')
              
-    ax1.set_title(f'Moving Average Crossover Trading Signals ({short_window} vs {long_window})')
-    ax1.set_ylabel('Stock Price')
+    ax1.set_title(f"Moving Average Crossover Trading Signals ({short_window} vs {long_window}) for {ticker_symbol}")
+    ax1.set_ylabel('Stock Price ($)')
     ax1.legend()
 
     # Plot 2: Cumulative Returns
     ax2.plot(data['Cumulative_Strategy'], label='Strategy Returns', color='blue')
     ax2.plot(data['Cumulative_Benchmark'], label='Buy-and-Hold Returns', color='gray')
-    ax2.set_title('Cumulative Returns')
-    ax2.set_xlabel('Date')
+    ax2.set_title(f"Cumulative Returns | Strategy Return: {metrics['Total Strategy Return']:.2%}, Buy-and-Hold: {metrics['Total Buy-and-Hold Return']:.2%}")
     ax2.set_ylabel('Cumulative Return')
     ax2.legend()
+    
+    # Plot 3: Drawdown
+    ax3.fill_between(data['Drawdown'].index, data['Drawdown'], color='red', alpha=0.3)
+    ax3.set_title(f"Maximum Drawdown | Max Drawdown: {metrics['Maximum Drawdown']:.2%}")
+    ax3.set_ylabel('Drawdown')
+    ax3.set_xlabel('Date')
     
     plt.tight_layout()
     plt.show()
@@ -135,16 +223,25 @@ if __name__ == "__main__":
     data = yf.download(ticker_symbol, start='2020-01-01', end='2024-01-01', auto_adjust=True)
     
     
-    short_window_input = input("Enter the short moving average window (default 50): ") or "50"
-    long_window_input = input("Enter the long moving average window (default 200): ") or "200"
-    
-    short_window = int(short_window_input)
-    long_window = int(long_window_input)
+    print("\nSelect an option:")
+    print("1: Manually enter moving average windows")
+    print("2: Automatically optimize for the best windows")
+    choice = input("Enter your choice (1 or 2): ")
 
-    
+    if choice == '1':
+        short_window = int(input("Enter the short moving average window (default 50): ") or "50")
+        long_window = int(input("Enter the long moving average window (default 200): ") or "200")
+        
+    elif choice == '2':
+        short_window, long_window = optimize_strategy(data)
+        
+    else:
+        print("Invalid choice. Exiting.")
+        exit()
+
     data_with_signals = calc_strategy_performance(data, short_window, long_window)
     
+    metrics = calculate_metrics(data_with_signals)
+    print_metrics(metrics)
     
-    data_with_metrics = analyze_strategy_performance(data_with_signals)
-   
-    plot_data(data_with_metrics, short_window, long_window)
+    plot_data(data_with_signals, short_window, long_window, metrics, ticker_symbol)
