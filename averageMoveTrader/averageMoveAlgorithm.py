@@ -23,14 +23,14 @@ def calc_strategy_performance(data, short_window, long_window):
     
     df = data.copy() # Copydata to avoid modifying the original DataFrame
     
-    # Calculate the moving averages using the user-defined windows
+    # Calculate the moving averages using the user defined windows
     df['Fast_MA'] = df['Close'].rolling(window=short_window).mean()
     df['Slow_MA'] = df['Close'].rolling(window=long_window).mean()
 
    
     df['Signal'] = 0.0
     
-    # Generate a raw signal of 1.0 when fast MA crosses above the slow MA
+    # Generate a signal of 1.0 when fast MA crosses above the slow MA
     df.loc[df.index[long_window:], 'Signal'] = np.where(df['Fast_MA'][long_window:] > df['Slow_MA'][long_window:], 1.0, 0.0)
     
     # Creating a crossover signal that only maps changes for buy/sell signals on plot
@@ -69,9 +69,9 @@ def calculate_metrics(data):
 
     # Handle the case of zero standard deviation to avoid division by zero
     if std_daily_return == 0:
-        annualized_sharpe = np.nan
+        annualised_sharpe = np.nan
     else:
-        annualized_sharpe = (mean_daily_return * 252) / (std_daily_return * np.sqrt(252))
+        annualised_sharpe = (mean_daily_return * 252) / (std_daily_return * np.sqrt(252))
     
     # Maximum Drawdown which is the maximum observed loss from a peak to a trough
     data['Cumulative_Max'] = data['Cumulative_Strategy'].cummax()
@@ -85,9 +85,9 @@ def calculate_metrics(data):
     mean_strategy_return = data['Strategy_Return'].mean()
     mean_benchmark_return = data['Daily_Return'].mean()
     alpha = mean_strategy_return - (beta * mean_benchmark_return)
-    annualized_alpha = alpha * 252
+    annualised_alpha = alpha * 252
 
-    # Annualized Volatility
+    # Annualised volatility, which is the standard deviation of returns scaled to annual terms
     annualised_volatility = data['Strategy_Return'].std() * np.sqrt(252)
 
     # Calmar ratio, which is a risk-adjusted return measure, a measure of return per unit of risk
@@ -99,14 +99,14 @@ def calculate_metrics(data):
 
     return {"Total Strategy Return": total_strategy_return,
             "Total Buy-and-Hold Return": total_benchmark_return,
-            "Sharpe Ratio": annualized_sharpe,
+            "Sharpe Ratio": annualised_sharpe,
             "Maximum Drawdown": max_drawdown,
             "Beta": beta,
-            "Annualized Alpha": annualized_alpha,
-            "Annualized Volatility": annualised_volatility,
+            "Annualised Alpha": annualised_alpha,
+            "Annualised Volatility": annualised_volatility,
             "Calmar Ratio": calmar_ratio}
 
-def optimize_strategy(data):
+def optimise_strategy(data):
     """
     Performs a parameter sweep to find the optimal short and long window
     based on the highest Sharpe Ratio.
@@ -161,8 +161,8 @@ def print_metrics(metrics):
     print(f"Sharpe Ratio: {metrics['Sharpe Ratio']:.2f}")
     print(f"Maximum Drawdown: {metrics['Maximum Drawdown']:.2%}")
     print(f"Beta: {metrics['Beta']:.2f}")
-    print(f"Annualized Alpha: {metrics['Annualized Alpha']:.2f}")
-    print(f"Annualized Volatility: {metrics['Annualized Volatility']:.2f}")
+    print(f"Annualised Alpha: {metrics['Annualised Alpha']:.2f}")
+    print(f"Annualised Volatility: {metrics['Annualised Volatility']:.2f}")
     print(f"Calmar Ratio: {metrics['Calmar Ratio']:.2f}")
     
 def plot_data(data, short_window, long_window, metrics, ticker_symbol):
@@ -225,7 +225,7 @@ if __name__ == "__main__":
     
     print("\nSelect an option:")
     print("1: Manually enter moving average windows")
-    print("2: Automatically optimize for the best windows")
+    print("2: Automatically optimise for the best windows")
     choice = input("Enter your choice (1 or 2): ")
 
     if choice == '1':
@@ -233,7 +233,7 @@ if __name__ == "__main__":
         long_window = int(input("Enter the long moving average window (default 200): ") or "200")
         
     elif choice == '2':
-        short_window, long_window = optimize_strategy(data)
+        short_window, long_window = optimise_strategy(data)
         
     else:
         print("Invalid choice. Exiting.")
